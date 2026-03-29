@@ -2,48 +2,46 @@
 
 ## Overview
 
-A local LLM (Qwen 3.5 Opus-distilled) acts as a secure task router between the operator (via iMessage), Claude AI (theory/reasoning), and Claude Code CLI (computation/coding). The system runs research programs autonomously while the operator directs from mobile.
+A local LLM (Qwen 3.5 Opus-distilled) acts as a secure task router between the operator (via iMessage) and a multi-agent fleet. The system runs research programs autonomously while the operator directs from mobile.
 
 ```
-┌─────────────┐     iMessage      ┌──────────────────────────────────────────┐
-│  Operator    │ ◄──────────────► │  LOCAL WORKSTATION                       │
-│  (iPhone)    │    encrypted      │                                          │
-│              │    via Apple ID   │  ┌────────────────────────────────────┐  │
-│  "Run Comp   │                   │  │  Qwen 3.5 (Opus-distilled)        │  │
-│   154 with   │                   │  │  LOCAL ROUTER LLM                  │  │
-│   these      │                   │  │                                    │  │
-│   params"    │                   │  │  Roles:                            │  │
-│              │                   │  │  • Parse operator intent           │  │
-│              │                   │  │  • Route to Claude AI or Code      │  │
-│              │                   │  │  • Move outputs between agents     │  │
-│              │                   │  │  • Update operator on completion   │  │
-│              │                   │  │  • Maintain COMPUTE_QUEUE.md       │  │
-│              │                   │  │  • NEVER generates theory/code     │  │
-│              │                   │  └──────┬──────────────┬──────────────┘  │
-│              │                   │         │              │                  │
-│              │                   │    ┌────▼────┐   ┌────▼──────────┐      │
-│              │                   │    │Claude AI│   │Claude Code CLI│      │
-│              │                   │    │  (API)  │   │  (local)      │      │
-│              │                   │    │         │   │               │      │
-│              │                   │    │ Theory  │   │ Computation   │      │
-│              │                   │    │ Analysis│   │ Code execution│      │
-│              │                   │    │ Prompts │   │ AWS/GCP mgmt  │      │
-│              │                   │    │ Audits  │   │ Git operations│      │
-│              │                   │    └────┬────┘   └──────┬────────┘      │
-│              │                   │         │               │                │
-│              │                   │         └───────┬───────┘                │
-│              │                   │                 │                        │
-│              │                   │         ┌───────▼────────┐               │
-│              │                   │         │  Shared Disk   │               │
-│              │                   │         │  /outputs/     │               │
-│              │                   │         │  /mailbox/     │               │
-│              │                   │         │  /COMPUTE_QUEUE│               │
-│              │                   │         └────────────────┘               │
-│              │                   │                                          │
-│              │                   │  ┌────────────────────────────────────┐  │
-│              │                   │  │  Security Layer (see below)        │  │
-│              │                   │  └────────────────────────────────────┘  │
-└─────────────┘                    └──────────────────────────────────────────┘
+┌─────────────┐     iMessage      ┌───────────────────────────────────────────────────┐
+│  Operator    │ ◄──────────────► │  LOCAL WORKSTATION                                │
+│  (iPhone)    │    encrypted      │                                                   │
+│              │    via Apple ID   │  ┌─────────────────────────────────────────────┐  │
+│  "Run Comp   │                   │  │  Qwen 3.5 (Opus-distilled)                  │  │
+│   154 with   │                   │  │  LOCAL ROUTER LLM                            │  │
+│   these      │                   │  │                                               │  │
+│   params"    │                   │  │  Roles:                                       │  │
+│              │                   │  │  • Parse operator intent                      │  │
+│              │                   │  │  • Route to the right agent for each task     │  │
+│              │                   │  │  • Move outputs between agents                │  │
+│              │                   │  │  • Update operator on completion              │  │
+│              │                   │  │  • Maintain COMPUTE_QUEUE.md                  │  │
+│              │                   │  │  • NEVER generates theory/code                │  │
+│              │                   │  └──┬──────┬──────┬──────┬──────┬───────────────┘  │
+│              │                   │     │      │      │      │      │                  │
+│              │                   │  ┌──▼──┐┌──▼──┐┌──▼──┐┌──▼──┐┌──▼──────────┐      │
+│              │                   │  │Claude││Claude││Codex││Chat ││ Perplexity/ │      │
+│              │                   │  │ AI   ││ Code ││     ││ GPT ││ Gemini      │      │
+│              │                   │  │(API) ││(CLI) ││(API)││(API)││ (search)    │      │
+│              │                   │  │      ││      ││     ││     ││             │      │
+│              │                   │  │Theory││Heavy ││Data ││Code ││Research     │      │
+│              │                   │  │Reason││Comp  ││Pipe ││Audit││Direction    │      │
+│              │                   │  │Prompt││Code  ││API  ││Impl ││Adversarial  │      │
+│              │                   │  │Audit ││AWS   ││Error││Revw ││Review       │      │
+│              │                   │  └──┬───┘└──┬───┘└──┬──┘└──┬──┘└──┬──────────┘      │
+│              │                   │     └───┬───┴───┬───┴──┬───┘      │                │
+│              │                   │         │       │      │          │                │
+│              │                   │  ┌──────▼───────▼──────▼──────────▼───────┐        │
+│              │                   │  │           Shared Disk                   │        │
+│              │                   │  │  /outputs/  /mailbox/  /COMPUTE_QUEUE   │        │
+│              │                   │  └────────────────────────────────────────┘        │
+│              │                   │                                                   │
+│              │                   │  ┌─────────────────────────────────────────────┐  │
+│              │                   │  │  Security Layer (see below)                  │  │
+│              │                   │  └─────────────────────────────────────────────┘  │
+└─────────────┘                    └───────────────────────────────────────────────────┘
 ```
 
 ## Task Flow
@@ -109,12 +107,30 @@ Router:
 
 ## What Each Agent Does
 
-| Agent | Role | Never Does |
-|-------|------|-----------|
-| **Operator** (iMessage) | Strategic direction, approvals, course corrections | Write code, run compute |
-| **Qwen Router** (local) | Parse intent, route tasks, move outputs, status updates | Generate theory, write computation prompts, make scientific judgments |
-| **Claude AI** (API) | Theory, analysis, prompt generation, audits, paper drafting | Execute code, manage infrastructure |
-| **Claude Code** (CLI) | Code execution, AWS/GCP management, git, data processing | Generate theory independently (follows prompts from Claude AI or operator) |
+| Agent | Role | Strengths | Never Does |
+|-------|------|-----------|-----------|
+| **Operator** (iMessage) | Strategic direction, approvals, course corrections | Judgment, priority, taste | Write code, run compute |
+| **Qwen Router** (local) | Parse intent, route tasks, move outputs, status updates | Fast local inference, always available | Generate theory, write computation prompts, make scientific judgments |
+| **Claude AI** (API) | Theory, analysis, prompt generation, audits, paper drafting | Deepest reasoning, longest context, best at novel derivation | Execute code, manage infrastructure |
+| **Claude Code** (CLI) | Heavy computation, code execution, AWS/GCP management, git, full-stack engineering | Superior at coding, tool use, multi-step execution, infrastructure management | Generate theory independently (follows prompts from Claude AI or operator) |
+| **Codex** (API) | Data pipelines, API integration, error handling, dataset acquisition | Superior at data wrangling, API calls, robust error recovery, handling messy real-world data | Theory, scientific judgment |
+| **ChatGPT** (API) | Code implementation audit, adversarial review of implementations | Good second-set-of-eyes on code before it goes to Claude Code; catches implementation-level bugs | Lead theory, lead computation |
+| **Perplexity** (search) | Research direction, literature pointers, finding datasets | Real-time web search, finding papers and data sources | Computation, code execution, scientific derivation |
+| **Gemini** (API) | Adversarial scientific review, second-opinion reasoning | Inference quality approaches Opus — good for catching reasoning errors that same-model review misses | Lead computation (not close enough to Opus for primary work) |
+
+### Agent Selection Philosophy
+
+**Claude Code is the primary workhorse** — it handles all heavy computation, code writing, infrastructure management, and multi-step execution. It's superior to everything else for these tasks.
+
+**Claude AI is the primary thinker** — theory, derivation, prompt design, and scientific audits. When a computation needs a structured prompt with hard-fail criteria, null comparisons, and adversarial audit requirements, Claude AI (Opus) writes it.
+
+**Codex fills the data gap** — where Claude Code occasionally struggles (complex API error handling, messy data ingestion, multi-format dataset reconciliation), Codex excels. The mailbox protocol between Claude and Codex runs on structured messages with git SHAs and explicit handoffs. Codex handles dataset acquisition, catalog cross-matching, and pipeline plumbing.
+
+**ChatGPT audits implementations** — before code goes to Claude Code for execution, ChatGPT reviews the implementation for bugs, edge cases, and logical errors. This is a pre-flight check, not a replacement. ChatGPT catches implementation-level issues; it doesn't design the computation.
+
+**Perplexity and Gemini guide and review** — Perplexity points the research in the right direction (finding papers, datasets, prior work). Gemini serves as an adversarial reviewer because its inference comes close enough to Opus to catch reasoning errors, but not close enough to be the primary engine. It's a calibrated second opinion — useful precisely because it's a different model with different failure modes.
+
+**The key principle**: no single model does everything. Each has a specific role matched to its strengths, with explicit handoff protocols and shared disk state. The local router orchestrates but never substitutes for any of them.
 
 ## Simultaneous Program Management
 
