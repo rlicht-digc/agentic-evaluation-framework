@@ -1,6 +1,6 @@
 # Multi-Agent Coordination
 
-A mailbox protocol for agent-to-agent coordination with independent cross-validation.
+Protocols for agent-to-agent coordination with independent cross-validation.
 
 ## The Problem
 
@@ -10,170 +10,151 @@ When multiple AI agents work on the same project (e.g., Claude and Codex, or mul
 2. **Cross-validate** each other's computations independently
 3. **Maintain consistency** in the shared project state
 4. **Avoid conflicts** when modifying shared files
+5. **Complete quality assurance cycles** with guaranteed termination
 
 Standard tools (git branches, shared files) handle the mechanical aspects. What they don't handle is the *semantic* coordination: ensuring that Agent A's understanding of the project state matches Agent B's understanding, and that cross-validation is genuinely independent.
 
-## The Mailbox Protocol
+## Protocol 1: Flat Mailbox
+
+The foundational coordination primitive. Suitable for simple setups where the primary need is ordered message passing and shared state awareness.
 
 ### Architecture
 
 ```
 project/
-  .mailbox/
+  mailbox/
     .seq          # Monotonically increasing message counter
-    msg_001.md    # First message
-    msg_002.md    # Second message
-    ...
+    queue/
+      M0001_agent-a_slug.md
+      M0002_agent-b_slug.md
+      ...
 ```
 
-Each message is a structured markdown file that one agent writes and another reads. The `.seq` file contains the current sequence number, ensuring messages are ordered and no message is missed.
+Each message is a structured markdown file with YAML frontmatter. The `.seq` file contains the current sequence number, ensuring messages are ordered and no message is missed.
 
 ### Message Format
 
 ```markdown
 ---
-seq: 42
-from: agent-A
-to: agent-B
-type: result | request | validation | correction
-timestamp: 2026-03-15T14:30:00Z
+message_id: M0042
+from: agent-a
+to: agent-b
+type: result | request | validation | correction | handoff
+timestamp_utc: "2026-01-15T14:30:00Z"
 repo_state:
   git_sha: abc123def456...  # FULL 40-char SHA, never abbreviated
-  branch: main
-  clean: true               # No uncommitted changes
-depends_on: [38, 41]        # Prior messages this depends on
+  dirty: false
+references: [M0038, M0041]
 ---
 
-## Subject
+## Summary
 
 [One-line description]
 
-## Body
+## Details
 
 [Structured content depending on message type]
 
 ## Action Items
 
 - [ ] [Specific action for the receiving agent]
-- [ ] [Another action]
-
-## State Changes
-
-- [What changed in the project state as a result of this message]
 ```
 
 ### Message Types
 
-#### Result Message
+**result**: computation complete, sharing verdict and key findings
 
-Sent when an agent completes a computation and wants to share the result.
+**request**: asking the other agent to perform a task with explicit constraints
 
-```markdown
----
-type: result
----
+**validation**: cross-validating a prior result using a different method
 
-## Computation 45: [Title]
+**correction**: error found in a prior result, with impact analysis and action items
 
-### Verdict: KILLED
+**handoff**: passing an in-progress task to the other agent with full context
 
-### Key Results
-- D1: [result] -- Grade: FAILED -- [specific failure]
-- D2: [result] -- Grade: PARTIAL -- [conditions]
+### Git SHA Requirement
 
-### Files Modified
-- outputs/computation45/verdict.md (NEW)
-- outputs/computation45/report.md (NEW)
-- memory/MEMORY.md (UPDATED: added Comp 45 entry)
+Every message must include the full 40-character git SHA of the repository state when the message was written. **Never use abbreviated SHAs.** A 7-character prefix can be ambiguous in a large repository, and the SHA is used to verify that the receiving agent is looking at the same state.
 
-### Action Items
-- [ ] Cross-validate D2 independently (do not read my derivation first)
-- [ ] Update project memory to reflect the kill
+## Protocol 2: Implement/Review Autoloop
+
+For tasks requiring formal quality assurance — where "did the implementer do this correctly?" needs a definitive answer, not a best-effort check — the flat mailbox is insufficient. The autoloop provides a bounded implement/review cycle with guaranteed termination.
+
+### The Problem with Ad-Hoc Review
+
+With flat mailbox review, there's no formal protocol for what happens when the reviewer finds issues. The reviewer sends a correction message, the implementer fixes things, sends another result message, and so on indefinitely. There's no mechanism to escalate when agents can't converge, no record of how many review cycles occurred, and no guarantee the cycle ends.
+
+### The Autoloop State Machine
+
+```
+APPROVAL_PENDING
+    │ (human approves)
+    ▼
+ACTIVE, role=IMPLEMENTER
+    │ (implementer calls handoff_to_reviewer)
+    ▼
+ACTIVE, role=REVIEWER
+    │
+    ├── submit_verdict(CONVERGED) ──────► COMPLETED
+    │
+    ├── submit_verdict(REVISE) ──────────► ACTIVE, role=IMPLEMENTER
+    │                                          │ (loop back)
+    │
+    └── submit_verdict(ESCALATE) ──────────► ESCALATED (human reviews)
 ```
 
-#### Request Message
+**Key properties**:
 
-Sent when an agent needs another agent to perform a computation.
+- The implementer and reviewer are the same agent type (usually both Claude Code), but with different instructions loaded at each role transition. Role determines which tools and instructions are active.
+- The implementer cannot mark its own work as complete — only the reviewer can issue a CONVERGED verdict.
+- ESCALATE is the guaranteed exit: when agents cannot converge, the task goes to human review rather than looping forever.
+- Every transition is logged with timestamp, actor, and notes.
 
-```markdown
----
-type: request
----
+### When to Use the Autoloop
 
-## Request: Independent Derivation of Parameter X
+Use the autoloop when:
+- The task has clear success criteria that a reviewer can evaluate objectively
+- The task modifies infrastructure that other agents depend on (a bug will affect everyone)
+- The task involves a correctness claim that needs independent verification
+- The human operator cannot review every intermediate state
 
-### Context
-I derived X = 1.23 in Computation 44. I need an independent check
-using a DIFFERENT method.
+Use the flat mailbox when:
+- The task is exploratory or open-ended (no clear success criteria)
+- The agents are exchanging information rather than producing a deliverable
+- The overhead of a formal cycle isn't warranted
 
-### Constraints
-- Do NOT read Computation 44's derivation
-- Use method B (I used method A)
-- Report your value with error estimate
-- If your value disagrees with 1.23 by more than 10%, flag it
+### Autoloop Example: Infrastructure Change
 
-### Why Independent
-Cross-validation is only meaningful if the second derivation is
-genuinely independent. Reading the first derivation introduces
-anchoring bias.
+```
+Task: Add subject_tags field to the paper provenance API
+
+Propose:
+  implementer proposes task with spec
+  human approves
+
+Implement (role=IMPLEMENTER):
+  - Add subject_tags to schema.sql
+  - Add subject_tags to models.py
+  - Wire subject_tags through tools.py INSERT and SELECT
+  - Wire subject_tags through server.py MCP wrapper
+  - Write tests covering write path and read path
+  - Hand off to reviewer with summary of changes and test results
+
+Review (role=REVIEWER):
+  - Verify schema.sql change is correct and migration-safe
+  - Verify models.py field is the right type with correct default
+  - Verify tools.py INSERT includes the new column
+  - Verify tools.py SELECT returns the new column
+  - Verify server.py wrapper exposes the field to MCP clients
+  - Run the tests
+  - Check: is there any path where subject_tags is accepted but silently dropped?
+  - verdict: CONVERGED (all paths verified, tests pass)
+    or REVISE (FastMCP wrapper missing the field — one path not wired)
 ```
 
-#### Validation Message
+The REVISE → implement → review cycle continues until either CONVERGED or ESCALATE.
 
-Sent when an agent has cross-validated another agent's result.
-
-```markdown
----
-type: validation
----
-
-## Cross-Validation of Computation 44, Result D2
-
-### Method Used: [different from original]
-### My Result: X = 1.25 +/- 0.03
-### Original Result: X = 1.23
-
-### Agreement: YES (within error bars)
-### Independence: VERIFIED (used method B, did not read method A derivation)
-
-### Notes
-- My error bar is larger because method B has fewer constraints
-- Both methods agree on the sign and order of magnitude
-- Recommend upgrading D2 from SUGGESTIVE to ESTABLISHED
-```
-
-#### Correction Message
-
-Sent when an agent finds an error in a prior computation.
-
-```markdown
----
-type: correction
----
-
-## Correction to Computation 44, Step 3
-
-### Error Found
-Sign error in the second term of the expansion. Line 47 of
-computation44/derivation.py has (-1)^n where it should be (-1)^(n+1).
-
-### Impact
-- D1 is unaffected (doesn't use this term)
-- D2 changes from X = 1.23 to X = -0.45 (sign flip + magnitude change)
-- D2's grade should be downgraded to QUARANTINED until corrected
-
-### Downstream Effects
-- Computation 45 used D2 as input -- results invalidated
-- Computation 47 cited D2 but didn't use the value -- unaffected
-
-### Action Items
-- [ ] Fix the sign error in computation44/derivation.py
-- [ ] Re-run Computation 44 with the fix
-- [ ] Re-run Computation 45 with corrected input
-- [ ] Update project memory: quarantine old D2 value
-```
-
-## Independent Cross-Validation Protocol
+## Protocol 3: Independent Cross-Validation
 
 The most valuable use of multi-agent coordination is independent cross-validation: having two agents derive the same result using different methods, without reading each other's work.
 
@@ -192,12 +173,12 @@ Rules:
 
 ### Why This Matters
 
-Standard agent review (Agent B reads Agent A's work and checks it) is nearly useless for catching systematic errors. Agent B will follow Agent A's logic, nod along, and confirm it -- the same way a human reviewer often rubber-stamps a plausible-looking derivation.
+Standard review (Agent B reads Agent A's work and checks it) is nearly useless for catching systematic errors. Agent B will follow Agent A's logic and confirm it — the same way a human reviewer often rubber-stamps a plausible-looking derivation.
 
 Independent derivation catches systematic errors because:
-- If both agents make the same systematic error, it's probably a real feature of the problem
-- If the agents disagree, the disagreement localizes the error
-- The probability of two independent derivations having the same bug is much lower than one derivation having a bug
+- If both agents make the same error, it's probably a real feature of the problem
+- If agents disagree, the disagreement localizes the error
+- The probability of two independent derivations sharing the same bug is much lower than one derivation having a bug
 
 ### Real Example (Anonymized)
 
@@ -206,38 +187,31 @@ Two agents were asked to independently compute the value of a correction term:
 - Agent A (method 1): "The correction is 10^{-5}, negligible"
 - Agent B (method 2): "The correction is 10^{+3}, dominant"
 
-Discrepancy: 8 orders of magnitude. Investigation found that Agent A had made an error in power counting (missed a factor of the fundamental scale raised to the 8th power). Agent B's result was correct.
+Discrepancy: 8 orders of magnitude. Investigation found that Agent A had made an error in power counting. Agent B's result was correct.
 
 Without independent cross-validation, Agent A's "negligible correction" would have been accepted, and the mechanism would have been incorrectly classified as viable.
 
 ## Practical Considerations
 
-### Git SHA Requirement
-
-Every message must include the full 40-character git SHA of the repository state when the message was written. This ensures:
-- The receiving agent can check out the exact state the sending agent was working with
-- If files have changed since the message was sent, the discrepancy is visible
-- No ambiguity about which version of the code or data was used
-
-**Never use abbreviated SHAs.** A 7-character prefix can be ambiguous in a large repository.
-
-### Ordering Guarantees
-
-The `.seq` counter ensures messages are processed in order. This matters because:
-- A correction message must be processed before any message that depends on the corrected result
-- A validation message must reference the specific version it validated
-- Dependencies between messages are explicit in the `depends_on` field
-
 ### Conflict Resolution
 
 When two agents modify the same file:
-1. The agent with the lower `.seq` number takes priority
+1. The agent with the lower message sequence number takes priority
 2. The second agent must merge, not overwrite
-3. If the changes conflict semantically (not just textually), escalate to the user
+3. If changes conflict semantically, escalate to the human operator
+
+### Ordering Guarantees
+
+The `.seq` counter ensures messages are processed in order. Dependencies between messages are explicit in the `references` field.
+
+### Scaling to a Full MCP Stack
+
+The flat mailbox and autoloop protocols can be backed by a formal MCP infrastructure when the project grows large enough to require it. See [MCP Coordination Stack](../architecture/mcp-coordination-stack.md) for the full architecture.
 
 ## Integration with the Framework
 
-- **Result Classification** grades appear in result messages, enabling cross-agent grade tracking
-- **Session Bootstrap** loads the mailbox state at session start, so the agent knows about pending messages
-- **Prompt Hardening** applies to request messages (the request itself is a computation prompt)
+- **Result Classification** grades appear in result and validation messages, enabling cross-agent grade tracking
+- **Session Bootstrap** loads the mailbox state at session start so the agent knows about pending messages and active autoloop tasks
+- **Prompt Hardening** applies to request messages (the request is a computation prompt)
 - **Computation Before Claim** applies within each agent's own work, regardless of coordination
+- **Check State Before Contradicting** applies when one agent's message disagrees with the other agent's model of project state
