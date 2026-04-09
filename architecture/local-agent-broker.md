@@ -2,15 +2,15 @@
 
 ## Overview
 
-A local LLM (Qwen 3.5 Opus-distilled) acts as a secure task router between the operator (via iMessage) and a multi-agent fleet. The system runs research programs autonomously while the operator directs from mobile.
+A local LLM acts as a secure task router between the operator (via iMessage) and a multi-agent fleet. The system runs research programs autonomously while the operator directs from mobile.
 
 ```
 ┌─────────────┐     iMessage      ┌───────────────────────────────────────────────────┐
 │  Operator    │ ◄──────────────► │  LOCAL WORKSTATION                                │
 │  (iPhone)    │    encrypted      │                                                   │
 │              │    via Apple ID   │  ┌─────────────────────────────────────────────┐  │
-│  "Run Comp   │                   │  │  Qwen 3.5 (Opus-distilled)                  │  │
-│   154 with   │                   │  │  LOCAL ROUTER LLM                            │  │
+│  "Run Comp   │                   │  │  Local Router LLM                            │  │
+│   154 with   │                   │  │  (small model, runs offline)                 │  │
 │   these      │                   │  │                                               │  │
 │   params"    │                   │  │  Roles:                                       │  │
 │              │                   │  │  • Parse operator intent                      │  │
@@ -49,11 +49,11 @@ A local LLM (Qwen 3.5 Opus-distilled) acts as a secure task router between the o
 ### 1. Operator sends instruction via iMessage
 
 ```
-"Run the Mach 1 kill test from CQ-003.
- Use 256³ on GPU. Download results before terminating."
+"Run the kill test from CQ-003.
+ Use full resolution on GPU. Download results before terminating."
 ```
 
-### 2. Local router (Qwen) parses and routes
+### 2. Local router parses and routes
 
 The router does NOT generate theory, write computation prompts, or make scientific decisions. It:
 
@@ -65,13 +65,13 @@ The router does NOT generate theory, write computation prompts, or make scientif
 {
   "task_id": "CQ-003",
   "source": "operator_imessage",
-  "timestamp": "2026-03-29T14:30:00Z",
-  "parsed_intent": "Run Mach 1 soliton collision at 256³ on GPU with data download",
+  "timestamp": "2026-01-01T14:30:00Z",
+  "parsed_intent": "Run kill test at full resolution on GPU with data download",
   "route_to": "claude_code",
   "context_files": [
     "COMPUTE_QUEUE.md#CQ-003",
-    "scripts/gpe_3d_soliton_merger.py",
-    "outputs/comp151_3d_gpe_results/summary.json"
+    "scripts/run_computation.py",
+    "outputs/comp_previous/summary.json"
   ],
   "security_token": "<signed_token>",
   "requires_theory": false
@@ -81,7 +81,7 @@ The router does NOT generate theory, write computation prompts, or make scientif
 ### 3. For theory-first tasks
 
 ```
-Operator: "Derive whether the sextic Jeans scale changes at finite temperature"
+Operator: "Derive whether the key parameter changes at finite temperature"
 ```
 
 Router sends to Claude AI (API) first:
@@ -99,9 +99,9 @@ Operator: "Run all HIGH priority items from the compute queue"
 Router:
 1. Reads COMPUTE_QUEUE.md
 2. Identifies CQ-001, CQ-002, CQ-003, CQ-008 as HIGH
-3. Sends CQ-003 to Claude Code first (kill test — gate for the rest)
-4. Runs CQ-008 locally in parallel (data integration, no AWS)
-5. IF CQ-003 passes → launches CQ-001 and CQ-002 via Claude Code
+3. Sends kill test first (gate for the rest)
+4. Runs local integration tasks in parallel
+5. IF kill test passes → launches remaining computations
 6. Updates operator at each milestone via iMessage
 7. Updates COMPUTE_QUEUE.md status entries
 
@@ -110,25 +110,25 @@ Router:
 | Agent | Role | Strengths | Never Does |
 |-------|------|-----------|-----------|
 | **Operator** (iMessage) | Strategic direction, approvals, course corrections | Judgment, priority, taste | Write code, run compute |
-| **Qwen Router** (local) | Parse intent, route tasks, move outputs, status updates | Fast local inference, always available | Generate theory, write computation prompts, make scientific judgments |
+| **Local Router** | Parse intent, route tasks, move outputs, status updates | Fast local inference, always available | Generate theory, write computation prompts, make scientific judgments |
 | **Claude AI** (API) | Theory, analysis, prompt generation, audits, paper drafting | Deepest reasoning, longest context, best at novel derivation | Execute code, manage infrastructure |
 | **Claude Code** (CLI) | Heavy computation, code execution, AWS/GCP management, git, full-stack engineering | Superior at coding, tool use, multi-step execution, infrastructure management | Generate theory independently (follows prompts from Claude AI or operator) |
 | **Codex** (API) | Data pipelines, API integration, error handling, dataset acquisition | Superior at data wrangling, API calls, robust error recovery, handling messy real-world data | Theory, scientific judgment |
 | **ChatGPT** (API) | Code implementation audit, adversarial review of implementations | Good second-set-of-eyes on code before it goes to Claude Code; catches implementation-level bugs | Lead theory, lead computation |
 | **Perplexity** (search) | Research direction, literature pointers, finding datasets | Real-time web search, finding papers and data sources | Computation, code execution, scientific derivation |
-| **Gemini** (API) | Adversarial scientific review, second-opinion reasoning | Inference quality approaches Opus — good for catching reasoning errors that same-model review misses | Lead computation (not close enough to Opus for primary work) |
+| **Gemini** (API) | Adversarial scientific review, second-opinion reasoning | Inference quality approaches Opus — good for catching reasoning errors that same-model review misses | Lead computation |
 
 ### Agent Selection Philosophy
 
-**Claude Code is the primary workhorse** — it handles all heavy computation, code writing, infrastructure management, and multi-step execution. It's superior to everything else for these tasks.
+**Claude Code is the primary workhorse** — it handles all heavy computation, code writing, infrastructure management, and multi-step execution.
 
-**Claude AI is the primary thinker** — theory, derivation, prompt design, and scientific audits. When a computation needs a structured prompt with hard-fail criteria, null comparisons, and adversarial audit requirements, Claude AI (Opus) writes it.
+**Claude AI is the primary thinker** — theory, derivation, prompt design, and scientific audits. When a computation needs a structured prompt with hard-fail criteria, null comparisons, and adversarial audit requirements, Claude AI writes it.
 
-**Codex fills the data gap** — where Claude Code occasionally struggles (complex API error handling, messy data ingestion, multi-format dataset reconciliation), Codex excels. The mailbox protocol between Claude and Codex runs on structured messages with git SHAs and explicit handoffs. Codex handles dataset acquisition, catalog cross-matching, and pipeline plumbing.
+**Codex fills the data gap** — where Claude Code occasionally struggles (complex API error handling, messy data ingestion, multi-format dataset reconciliation), Codex excels. The mailbox protocol between Claude and Codex runs on structured messages with git SHAs and explicit handoffs.
 
-**ChatGPT audits implementations** — before code goes to Claude Code for execution, ChatGPT reviews the implementation for bugs, edge cases, and logical errors. This is a pre-flight check, not a replacement. ChatGPT catches implementation-level issues; it doesn't design the computation.
+**ChatGPT audits implementations** — before code goes to Claude Code for execution, ChatGPT reviews the implementation for bugs, edge cases, and logical errors.
 
-**Perplexity and Gemini guide and review** — Perplexity points the research in the right direction (finding papers, datasets, prior work). Gemini serves as an adversarial reviewer because its inference comes close enough to Opus to catch reasoning errors, but not close enough to be the primary engine. It's a calibrated second opinion — useful precisely because it's a different model with different failure modes.
+**Perplexity and Gemini guide and review** — Perplexity points the research in the right direction. Gemini serves as an adversarial reviewer with different failure modes from the primary model.
 
 **The key principle**: no single model does everything. Each has a specific role matched to its strengths, with explicit handoff protocols and shared disk state. The local router orchestrates but never substitutes for any of them.
 
@@ -138,15 +138,15 @@ The router maintains a task queue and can run multiple programs in parallel:
 
 ```
 ACTIVE PROGRAMS:
-├── BEC Dark Matter
-│   ├── Comp 154 (running on AWS)
-│   ├── CQ-003 (queued for GPU)
-│   └── Paper A draft (Claude AI)
-├── BH Singularity
-│   └── Paper 3 revision (Claude AI)
-├── V3 Trading System
-│   └── v7.5.0 backtest (running on GKE)
-└── Cluster Paper
+├── Research Program A
+│   ├── Computation (running on AWS)
+│   ├── Kill test (queued for GPU)
+│   └── Paper draft (Claude AI)
+├── Research Program B
+│   └── Paper revision (Claude AI)
+├── Platform Project
+│   └── Backtest (running on GKE)
+└── Extension Program
     └── Figure generation (Claude Code local)
 ```
 
@@ -164,7 +164,7 @@ The router:
 # Uses applescript via subprocess to send/receive iMessages
 # The local workstation runs a daemon that:
 # 1. Watches ~/Library/Messages/chat.db for new messages from operator
-# 2. Parses with Qwen
+# 2. Parses with local router LLM
 # 3. Routes to appropriate agent
 # 4. Sends results back via osascript
 
@@ -181,7 +181,7 @@ def send_imessage(recipient, message):
 
 def watch_messages(callback):
     # Poll chat.db for new messages from operator's Apple ID
-    # Parse with Qwen router
+    # Parse with local router
     # Execute callback with parsed task
     ...
 ```
@@ -189,14 +189,14 @@ def watch_messages(callback):
 ### Message format conventions
 
 **Operator → Router:**
-- Natural language (Qwen parses)
+- Natural language (router parses)
 - Can include computation numbers, parameter values, priority overrides
 - "Status?" returns current active task summary
 
 **Router → Operator:**
 - Structured updates at milestones only (not every timestep)
-- "CQ-003 COMPLETE: Mach 1 coh_frac = 0.87. Galaxy preserved. Launching CQ-001."
-- Error alerts: "CQ-002 FAILED: GPU quota exceeded. Need approval for p3 instance."
+- "CQ-003 COMPLETE: kill test passed. Launching CQ-001."
+- Error alerts: "CQ-002 FAILED: GPU quota exceeded. Need approval for larger instance."
 
 ---
 
@@ -204,7 +204,7 @@ def watch_messages(callback):
 
 ## Threat Model
 
-The local LLM (Qwen) has direct access to:
+The local router has direct access to:
 - Claude AI API (can generate prompts and receive responses)
 - Claude Code CLI (can execute arbitrary code)
 - AWS/GCP credentials (can launch/terminate instances)
@@ -212,11 +212,11 @@ The local LLM (Qwen) has direct access to:
 - iMessage (can send messages as the operator)
 
 **Primary threats:**
-1. **Prompt injection via iMessage** — attacker sends a message that Qwen interprets as a legitimate operator instruction
-2. **Prompt injection via Claude AI output** — compromised or manipulated Claude response contains instructions that Qwen executes
-3. **Prompt injection via disk artifacts** — malicious content in downloaded files, computation outputs, or git repos that Qwen reads and acts on
-4. **Exfiltration** — Qwen sends sensitive data (API keys, trading strategies, unpublished research) to unauthorized destinations
-5. **Unauthorized compute** — Qwen launches expensive AWS/GCP resources without operator approval
+1. **Prompt injection via iMessage** — attacker sends a message that the router interprets as a legitimate operator instruction
+2. **Prompt injection via Claude AI output** — compromised or manipulated Claude response contains instructions that the router executes
+3. **Prompt injection via disk artifacts** — malicious content in downloaded files, computation outputs, or git repos that the router reads and acts on
+4. **Exfiltration** — router sends sensitive data (API keys, proprietary research, trading strategies) to unauthorized destinations
+5. **Unauthorized compute** — router launches expensive AWS/GCP resources without operator approval
 
 ## Security Layers
 
@@ -264,7 +264,6 @@ The operator's device and the workstation share a synchronized secret that rotat
 import hashlib
 import hmac
 import time
-import secrets
 
 class DeviceSyncToken:
     """
@@ -277,7 +276,6 @@ class DeviceSyncToken:
         self.window = window_seconds  # 5-minute windows
 
     def current_token(self) -> str:
-        """Generate current valid token."""
         counter = int(time.time()) // self.window
         return hmac.new(
             self.seed,
@@ -286,7 +284,6 @@ class DeviceSyncToken:
         ).hexdigest()[:16]
 
     def verify(self, token: str) -> bool:
-        """Verify a token (allows ±1 window for clock drift)."""
         counter = int(time.time()) // self.window
         for offset in [-1, 0, 1]:
             expected = hmac.new(
@@ -300,8 +297,6 @@ class DeviceSyncToken:
 ```
 
 **Initial pairing**: QR code displayed on workstation, scanned by iPhone. Establishes the shared seed via Diffie-Hellman key exchange over the local network. Seed stored in macOS Keychain and iOS Keychain (hardware-backed).
-
-**Every iMessage command** includes the current token. Router rejects messages without valid tokens — even from the operator's Apple ID (in case of account compromise).
 
 ### Layer 3: Command Allowlisting and Spend Limits
 
@@ -334,43 +329,35 @@ allowed_actions:
     - push_to_public_repo     # Requires explicit operator approval
 
 spend_limits:
-  aws_per_hour: 50.00         # USD
+  aws_per_hour: 50.00
   aws_per_day: 200.00
   gcp_per_hour: 50.00
   gcp_per_day: 200.00
-  require_approval_above: 100.00  # Single task
+  require_approval_above: 100.00
 
 repo_allowlist:
-  - /Users/russelllicht/bec-dark-matter
-  - /Users/russelllicht/bh-singularity
-  - /Users/russelllicht/empirical-ladder
-  - /Users/russelllicht/morris-thorne-wormhole
-  # V3 trading system NOT on allowlist for automated access
+  - /path/to/research-program-a
+  - /path/to/research-program-b
+  - /path/to/research-program-c
+  # trading system NOT on allowlist for automated access
 ```
 
 ### Layer 4: Prompt Injection Firewall
 
-The router applies input sanitization before parsing:
-
 ```python
 class InjectionFirewall:
-    """
-    Prevents prompt injection from iMessage, Claude outputs, or disk files.
-    """
-
     INJECTION_PATTERNS = [
         r"ignore previous instructions",
         r"system prompt",
         r"you are now",
         r"forget everything",
         r"new instructions:",
-        r"<\|.*\|>",              # Common injection delimiters
+        r"<\|.*\|>",
         r"```system",
         r"ADMIN_OVERRIDE",
     ]
 
     def sanitize_operator_input(self, message: str) -> str:
-        """Strip potential injection patterns from operator messages."""
         for pattern in self.INJECTION_PATTERNS:
             if re.search(pattern, message, re.IGNORECASE):
                 raise SecurityError(f"Injection pattern detected: {pattern}")
@@ -379,30 +366,21 @@ class InjectionFirewall:
     def sanitize_claude_output(self, response: str, expected_task_id: str) -> str:
         """
         Claude AI outputs are treated as UNTRUSTED DATA, not instructions.
-        The router extracts structured fields only, never executes raw text.
+        Only structured fields are extracted — never raw text executed.
         """
-        # Parse only the expected JSON/markdown structure
-        # Never eval() or exec() anything from Claude's response
-        # Only extract: computation_prompt, verdict, numerical_results
         ...
 
     def sanitize_disk_artifact(self, filepath: str) -> str:
         """Files read from disk are data, never instructions."""
-        content = open(filepath).read()
-        # Strip any content that looks like router commands
-        # Files can contain computation results but not router directives
-        return content
+        ...
 ```
 
 ### Layer 5: Audit Trail (Immutable Log)
 
-Every action is logged to an append-only audit trail:
-
 ```python
 class AuditLog:
     """
-    Append-only log with hash chain (lightweight blockchain).
-    Each entry references the hash of the previous entry.
+    Append-only log with hash chain.
     Tampering with any entry breaks the chain.
     """
 
@@ -428,7 +406,6 @@ class AuditLog:
         return entry_hash
 
     def verify_chain(self) -> bool:
-        """Verify the entire audit trail hasn't been tampered with."""
         prev = "genesis"
         for line in open(self.path):
             entry = json.loads(line)
@@ -448,53 +425,41 @@ class AuditLog:
 ### Layer 6: Network Isolation
 
 ```
-┌─────────────────────────────────────────────┐
-│  WORKSTATION NETWORK POLICY                  │
-│                                              │
-│  ALLOWED OUTBOUND:                           │
-│  ├── api.anthropic.com (Claude AI)           │
-│  ├── *.amazonaws.com (AWS EC2/S3)            │
-│  ├── *.googleapis.com (GCP)                  │
-│  ├── github.com (git push/pull)              │
-│  ├── iMessage relay (Apple servers)           │
-│  └── pypi.org (pip install, read-only)       │
-│                                              │
-│  BLOCKED OUTBOUND:                           │
-│  ├── All other HTTP/HTTPS                    │
-│  ├── All SSH except to AWS/GCP instances     │
-│  ├── All SMTP (no email from workstation)    │
-│  └── All unknown ports                       │
-│                                              │
-│  ALLOWED INBOUND:                            │
-│  ├── iMessage (Apple relay only)             │
-│  └── SSH from operator's known IPs only      │
-│                                              │
-│  BLOCKED INBOUND:                            │
-│  └── Everything else                         │
-└─────────────────────────────────────────────┘
+ALLOWED OUTBOUND:
+├── api.anthropic.com (Claude AI)
+├── *.amazonaws.com (AWS)
+├── *.googleapis.com (GCP)
+├── github.com (git)
+├── iMessage relay (Apple servers)
+└── pypi.org (packages, read-only)
+
+BLOCKED OUTBOUND:
+├── All other HTTP/HTTPS
+├── All SSH except to cloud instances
+└── All unknown ports
 ```
 
 ## Implementation Roadmap
 
-### Phase 1: Core Router (Week 1)
-- [ ] Qwen 3.5 local deployment (ollama or vllm)
+### Phase 1: Core Router
+- [ ] Local LLM deployment (ollama or vllm)
 - [ ] iMessage watcher daemon
 - [ ] Basic task parsing and routing to Claude Code
 - [ ] HMAC command signing (device pairing)
 
-### Phase 2: Claude AI Integration (Week 2)
+### Phase 2: Claude AI Integration
 - [ ] Anthropic API integration for theory tasks
 - [ ] Output handoff pipeline (Claude AI → disk → Claude Code)
 - [ ] Structured prompt generation from operator intent
 
-### Phase 3: Security Hardening (Week 3)
+### Phase 3: Security Hardening
 - [ ] Device-synced TOTP tokens
 - [ ] Command allowlisting and spend limits
 - [ ] Injection firewall
 - [ ] Append-only audit trail with hash chain
-- [ ] Network policy enforcement (pf/iptables)
+- [ ] Network policy enforcement
 
-### Phase 4: Multi-Program Management (Week 4)
+### Phase 4: Multi-Program Management
 - [ ] Concurrent task queue with priority
 - [ ] COMPUTE_QUEUE.md auto-maintenance
 - [ ] Consolidated status reporting
@@ -510,5 +475,3 @@ class AuditLog:
 | 4. Injection Firewall | Prompt injection (all vectors) | Pattern matching + structural parsing |
 | 5. Audit Trail | Tampering, forensics | Hash-chained append-only log |
 | 6. Network Isolation | Exfiltration, C2 | Allowlisted outbound only |
-
-**Defense in depth**: An attacker would need to compromise the operator's device (Layer 2) AND bypass the injection firewall (Layer 4) AND stay within the allowlist (Layer 3) AND avoid detection in the audit trail (Layer 5). Each layer is independent.
